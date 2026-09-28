@@ -215,10 +215,13 @@ class MyClient {
           sgs = downData
           // Update the dials. This is only necessary if a player closes
           // the browser window then rejoins.
-          Object.keys(sgs.synthProperties).forEach(function(k, idx){
-            dials[idx].val = sgs.synthProperties[k]
-            dials[idx].set_pair_val()
-          })
+          // TODO(drum circle): synthProperties no longer exists; guarded until UI rewrite.
+          if (sgs.synthProperties !== undefined){
+            Object.keys(sgs.synthProperties).forEach(function(k, idx){
+              dials[idx].val = sgs.synthProperties[k]
+              dials[idx].set_pair_val()
+            })
+          }
           
           draw_components(dials, false)
         }
@@ -271,10 +274,13 @@ class MyClient {
       }
 
       // Update the dials.
-      Object.keys(sgs.synthProperties).forEach(function(k, idx){
-        dials[idx].val = sgs.synthProperties[k]
-        dials[idx].set_pair_val()
-      })
+      // TODO(drum circle): synthProperties no longer exists; guarded until UI rewrite.
+      if (sgs.synthProperties !== undefined){
+        Object.keys(sgs.synthProperties).forEach(function(k, idx){
+          dials[idx].val = sgs.synthProperties[k]
+          dials[idx].set_pair_val()
+        })
+      }
 
       draw_components(dials, false)
 
@@ -472,16 +478,9 @@ class MyClient {
         p.textSize(12)
         p.fill(220, 210, 220)
         p.noStroke()
-        console.log("sgs.turnIndex:", sgs.turnIndex)
+        // TODO(drum circle): no turns any more; placeholder until UI rewrite.
         console.log("yourIdx:", yourIdx)
-        if (sgs.turnIndex == yourIdx){
-          // Display notification.
-          p.text("Hi, it's your go.", 10, 20)
-        }
-        else {
-          // Display notification.
-          p.text("Hi, it's " + sgs.players[sgs.turnIndex].name + "'s go.", 10, 20)
-        }
+        p.text("Everyone's here: " + sgs.players.map(function(pl){ return pl.name }).join(", "), 10, 20)
 
       }
 
