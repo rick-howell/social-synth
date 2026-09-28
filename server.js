@@ -132,13 +132,16 @@ fastify.post("/api/joinGame", function(req, rep){
 })
 
 
-fastify.post("/api/updateGame", function(req, rep){
+// Updates one player's own 16-step lane. Any joined player may edit their
+// own lane at any time - there's no turn order in the drum circle, so
+// everyone's steps can change independently and simultaneously.
+fastify.post("/api/updateSteps", function(req, rep){
   console.log("req.body:", req.body)
   const idSocket = req.body.idSocket
   const idGame = req.body.idGame
-  const idEdit = req.body.idEdit
-  const val = req.body.val
-  if (idSocket === null || idGame === null || idEdit === null || val === null){
+  const playerIdx = req.body.playerIdx
+  const steps = req.body.steps
+  if (idSocket === null || idGame === null || playerIdx === null || steps === null){
     rep.code(404).send()
     return
   }
@@ -150,11 +153,48 @@ fastify.post("/api/updateGame", function(req, rep){
     })
     return
   }
-  cg["synthProperties"][idEdit] = val
 
-  // Increment turnIndex.
-  console.log("cg.turnIndex:", cg.turnIndex)
-  cg.turnIndex = (cg.turnIndex + 1) % cg.players.length
+  const ok = gameState.update_steps(cg, playerIdx, steps)
+  if (!ok){
+    rep.code(400).send({ "msg": "Could not update steps." })
+    return
+  }
+
+  // Tell all clients in room idGame about the update.
+  idToSocket[idSocket].to(idGame).emit("dial-assert", cg)
+  rep.send(cg)
+})
+
+
+// Updates the shared bpm/swing. Only the game's bpmOwnerIdx (the player who
+// started the game) is allowed to do this - gameState.update_transport()
+// enforces that and returns false if some other player tries.
+fastify.post("/api/updateTransport", function(req, rep){
+  console.log("req.body:", req.body)
+  const idSocket = req.body.idSocket
+  const idGame = req.body.idGame
+  const playerIdx = req.body.playerIdx
+  const bpm = req.body.bpm
+  const swing = req.body.swing
+  if (idSocket === null || idGame === null || playerIdx === null){
+    rep.code(404).send()
+    return
+  }
+  const cg = allGames[idGame]
+  console.log("cg:", cg)
+  if (cg === undefined){
+    rep.send({
+      "msg": "Game could not be identified. Server may have been refreshed."
+    })
+    return
+  }
+
+  const ok = gameState.update_transport(cg, playerIdx, bpm, swing)
+  if (!ok){
+    rep.code(403).send({ "msg": "Only the player who started the game can set bpm/swing." })
+    return
+  }
+
   // Tell all clients in room idGame about the update.
   idToSocket[idSocket].to(idGame).emit("dial-assert", cg)
   rep.send(cg)

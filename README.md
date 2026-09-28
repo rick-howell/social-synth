@@ -26,4 +26,4 @@ Click the project name ("social-synth") in the header and select Remix Project t
 Click `Show` in the header to see your app live. Updates to your code will deploy instantly.
 
 
-## Made by Tom Collins
+## Originally made by Tom Collins, modified by Rick Howell
