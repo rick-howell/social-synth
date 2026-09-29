@@ -94,16 +94,27 @@ class GameState {
       return Math.floor(rand(min, max + 1))
     }
 
+    // Amplitude decay is rolled first so the pitch sweep can be kept
+    // shorter than it - a sweep that outlasts the note would be inaudible.
+    const ampDecay = Math.round(rand(0.05, 0.3)*1000)/1000
+
     return {
       // MIDI note number - kept in a low-ish register so it reads as "drum".
       "pitch": randInt(28, 55),
+      // Pitch envelope: each hit starts `pitchAmount` semitones above
+      // `pitch` and falls exponentially back to it over `pitchDecay`
+      // seconds. That fast downward sweep is what gives a drum its "thump".
+      // Range is ~0.6 to 2.5 octaves (subtle tom -> big kick); decay is
+      // kept short (20 ms up to ~120 ms, never longer than the amp decay).
+      "pitchAmount": randInt(7, 30),
+      "pitchDecay": Math.round(rand(0.02, Math.min(0.12, ampDecay*0.9))*1000)/1000,
       "harmonicity": Math.round(rand(0.5, 8)*10)/10,
       "modulationIndex": randInt(2, 20),
       "oscillatorType": randChoice(["sine", "square", "triangle", "sawtooth"]),
       "modulationType": randChoice(["sine", "square", "triangle"]),
       "envelope": {
         "attack": 0.001,
-        "decay": Math.round(rand(0.05, 0.3)*1000)/1000,
+        "decay": ampDecay,
         "sustain": 0,
         "release": Math.round(rand(0.05, 0.2)*1000)/1000
       },

@@ -27,20 +27,61 @@ class MyClient {
     Tone.Transport.bpm.value = 100
     Tone.Transport.swingSubdivision = "16n"
 
+    // Master bus: every player's synth feeds one tanh soft-clipper so the
+    // summed output can never exceed full scale, no matter how many drums
+    // hit on the same step.
+    //
+    // A WaveShaperNode only sees inputs in [-1, 1], so we scale the signal
+    // down by HEADROOM going in and have the curve scale it back up before
+    // applying tanh. Net effect is out = tanh(in): unity gain for quiet
+    // signals, smooth saturation toward +/-1 for loud ones, and no hard
+    // clipping for sums up to +/-HEADROOM.
+    const SOFT_CLIP_HEADROOM = 4
+    const masterPreGain = new Tone.Gain(1 / SOFT_CLIP_HEADROOM)
+    const masterSoftClip = new Tone.WaveShaper(
+      x => Math.tanh(x * SOFT_CLIP_HEADROOM),
+      4096
+    )
+    masterSoftClip.oversample = "2x" // reduces aliasing from the saturation
+    masterPreGain.connect(masterSoftClip)
+    masterSoftClip.toDestination()
+
     // 16-step loop scheduler
     Tone.Transport.scheduleRepeat((time) => {
       if (!sgs || !sgs.players) return
 
       sgs.players.forEach((player, idx) => {
         if (player.joined && player.steps && player.steps[currentStep] && playerSynths[idx]) {
-          const pitchNote = Tone.Frequency(player.voice.pitch, "midi").toNote()
-          playerSynths[idx].triggerAttackRelease(pitchNote, "16n", time)
+          trigger_drum(playerSynths[idx], player.voice, time)
         }
       })
 
       // Advance visual playhead (0 to 15)
       currentStep = (currentStep + 1) % 16
     }, "16n")
+
+    // Plays one drum hit with a downward pitch sweep. The note starts
+    // `pitchAmount` semitones above the voice's base pitch and falls
+    // exponentially back to it over `pitchDecay` seconds. The FMSynth's
+    // modulator tracks the carrier (via harmonicity), so the whole timbre
+    // sweeps together, which is what makes it read as a kick/tom.
+    // Voices without pitch params (e.g. from an older server) play flat.
+    function trigger_drum(synth, v, time) {
+      const baseFreq = Tone.Frequency(v.pitch, "midi").toFrequency()
+      const semitones = v.pitchAmount || 0
+      const decay = v.pitchDecay || 0
+
+      if (semitones > 0 && decay > 0) {
+        const startFreq = baseFreq * Math.pow(2, semitones / 12)
+        // Clear any sweep still scheduled from this synth's previous hit
+        // so back-to-back hits don't fight over the frequency param.
+        synth.frequency.cancelScheduledValues(time)
+        synth.triggerAttackRelease(startFreq, "16n", time)
+        synth.frequency.exponentialRampToValueAtTime(baseFreq, time + decay)
+      } else {
+        synth.triggerAttackRelease(baseFreq, "16n", time)
+      }
+    }
 
     function syncPlayerSynths() {
       if (!sgs || !sgs.players) return
@@ -55,7 +96,7 @@ class MyClient {
             modulation: { type: v.modulationType },
             envelope: v.envelope,
             modulationEnvelope: v.modulationEnvelope
-          }).toDestination()
+          }).connect(masterPreGain)
 
           playerSynths[idx] = synth
         }
@@ -371,7 +412,8 @@ class MyClient {
               btn.mousePressed(() => {
                 const inviteUrl = `${window.location.origin}${window.location.pathname}?g=${idGame}&p=${idx}`
                 copy_to_clipboard(inviteUrl)
-                alert(`Invite link for Player ${idx + 1} copied to clipboard!`)
+                btn.html("Copied!")
+                setTimeout(() => btn.html("Invite"), 1500)
               })
             }
           })
@@ -460,11 +502,10 @@ class MyClient {
     }
 
     function copy_to_clipboard(text) {
-      if (typeof mu !== "undefined" && mu.copy_to_clipboard) {
-        mu.copy_to_clipboard(text)
-        return
-      }
-      navigator.clipboard.writeText(text)
+      navigator.clipboard.writeText(text).catch(err => {
+        console.error("Clipboard write failed:", err)
+        window.prompt("Copy this invite link:", text)
+      })
     }
 
     function rand_alphanumeric(len){
